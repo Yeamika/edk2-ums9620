@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "board_source": "uefi-controls-20261105, verified against source-final.tar (63 Ums9620Pkg files)",
+  "dependencies": {
+    "edk2": {
+      "repository": "https://github.com/tianocore/edk2.git",
+      "commit": "e7aac7fc137e247edad22f7ee53b9a1fba227397"
+    },
+    "edk2/MdeModulePkg/Library/BrotliCustomDecompressLib/brotli": {
+      "repository": "https://github.com/google/brotli",
+      "commit": "f4153a09f87cbb9c826d8fc12c74642bb2d879ea"
+    },
+    "edk2/BaseTools/Source/C/BrotliCompress/brotli": {
+      "repository": "https://github.com/google/brotli",
+      "commit": "f4153a09f87cbb9c826d8fc12c74642bb2d879ea"
+    }
+  }
+}

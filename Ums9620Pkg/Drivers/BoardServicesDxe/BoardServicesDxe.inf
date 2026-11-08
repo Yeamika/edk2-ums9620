@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x0001001B
+  BASE_NAME = BoardServicesDxe
+  FILE_GUID = 8dc3c22d-b22a-453c-b7ee-b638bbfe3d5a
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT = Initialize
+[Sources]
+  BoardServicesDxe.c
+  Hardware.h
+  Power.c
+  Watchdog.c
+  Adc.c
+  Charger.c
+  Touch.c
+  TouchIrq.c
+  TouchPacket.c
+  TouchReload.c
+  TouchReload.h
+  Keys.c
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DebugLib
+  BaseMemoryLib
+  IoLib
+  TimerLib
+  DxeServicesLib
+  MemoryAllocationLib
+[Protocols]
+  gEfiAbsolutePointerProtocolGuid
+  gEfiSimpleTextInProtocolGuid
+  gHardwareInterruptProtocolGuid
+[Guids]
+  gEfiEventExitBootServicesGuid
+  gEfiConsoleInDeviceGuid
+[Depex]
+  gHardwareInterruptProtocolGuid

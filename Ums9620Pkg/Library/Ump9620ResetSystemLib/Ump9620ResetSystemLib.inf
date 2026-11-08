@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x00010005
+  BASE_NAME = Ump9620ResetSystemLib
+  FILE_GUID = a9bb2f81-e304-4f63-8ab3-07d5cf1a1b2d
+  MODULE_TYPE = BASE
+  VERSION_STRING = 1.0
+  LIBRARY_CLASS = ResetSystemLib|DXE_RUNTIME_DRIVER
+[Sources]
+  ResetSystem.c
+  PowerOff.c
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  ArmPkg/ArmPkg.dec
+[LibraryClasses]
+  ArmSmcLib
+  DebugLib
+  IoLib
+  TimerLib
+  UefiRuntimeLib
+  UefiBootServicesTableLib

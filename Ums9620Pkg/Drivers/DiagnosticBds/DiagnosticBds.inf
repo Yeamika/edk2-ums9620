@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x0001001B
+  BASE_NAME = DiagnosticBds
+  FILE_GUID = aba9713b-df94-4da8-b2d4-73cd7802a076
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT = Initialize
+[Sources]
+  DiagnosticBds.c
+  Storage.c
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+[LibraryClasses]
+  TimerLib
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  UefiLib
+[Protocols]
+  gEfiBdsArchProtocolGuid
+  gEfiFirmwareVolume2ProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiPartitionInfoProtocolGuid
+  gEfiBlockIoProtocolGuid
+[Guids]
+  gEfiEndOfDxeEventGroupGuid
+  gEfiFileInfoGuid
+  gEfiPartTypeSystemPartGuid
+[Depex]
+  TRUE

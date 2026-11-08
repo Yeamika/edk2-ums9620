@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x0001001B
+  BASE_NAME = EmmcDxe
+  FILE_GUID = 283c14ec-274d-4d37-958c-676b73af7d9c
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT = EmmcInitialize
+[Sources]
+  EmmcDxe.c
+  Gpt.c
+  Gpt.h
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseMemoryLib
+  BaseLib
+  CacheMaintenanceLib
+  MemoryAllocationLib
+  DebugLib
+  IoLib
+  TimerLib
+[Protocols]
+  gEfiBlockIoProtocolGuid
+  gEfiDevicePathProtocolGuid
+[Guids]
+  gEfiEventExitBootServicesGuid
+  gEfiPartTypeSystemPartGuid
+[Depex]
+  TRUE

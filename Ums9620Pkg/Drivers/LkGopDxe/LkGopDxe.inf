@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+[Defines]
+  INF_VERSION = 0x0001001B
+  BASE_NAME = LkGopDxe
+  FILE_GUID = ea8cbfd1-714f-4794-9852-cbb75c379010
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT = Initialize
+[Sources]
+  LkGopDxe.c
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  FrameBufferBltLib
+  BaseMemoryLib
+  BaseLib
+  IoLib
+  TimerLib
+  DebugLib
+  CacheMaintenanceLib
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid
+  gEfiDevicePathProtocolGuid
+[Depex]
+  TRUE
