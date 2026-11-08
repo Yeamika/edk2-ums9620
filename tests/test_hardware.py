@@ -15,6 +15,7 @@ class HardwareTest(unittest.TestCase):
         cls.out=Path(cls.temp.name)
         cls.cc=os.environ.get('CC','cc')
         cls.abi=Path(os.environ['PJB_BOOT_ABI_INCLUDE'])
+        cls.edk=Path(os.environ.get('PJB_EDK2_ROOT') or ROOT/'edk2')
         subprocess.run([cls.cc,'-shared','-fPIC','-Wall','-Wextra','-Werror',
             str(ROOT/'Ums9620Pkg/Drivers/BoardServicesDxe/TouchPacket.c'),
             '-o',str(cls.out/'touch.so')],check=True)
@@ -60,9 +61,9 @@ class HardwareTest(unittest.TestCase):
             subprocess.run([self.cc,'-std=c11','-ffunction-sections','-fdata-sections',
                 '-Wl,--gc-sections','-fshort-wchar','-fno-builtin','-Werror',
                 '-DEFIAPI=__attribute__((ms_abi))',
-                '-I'+str(ROOT/'edk2/MdePkg/Include'),'-I'+str(ROOT/'edk2/MdePkg/Include/X64'),
-                '-I'+str(ROOT/'edk2/MdeModulePkg/Include'),
-                '-I'+str(ROOT/'edk2/EmbeddedPkg/Include'),
+                '-I'+str(self.edk/'MdePkg/Include'),'-I'+str(self.edk/'MdePkg/Include/X64'),
+                '-I'+str(self.edk/'MdeModulePkg/Include'),
+                '-I'+str(self.edk/'EmbeddedPkg/Include'),
                 '-I'+str(self.abi),
                 str(ROOT/'tests'/f'{name}.c'),'-o',str(output)],check=True)
             subprocess.run([str(output)],check=True)

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,11 +35,21 @@ def main():
     if not files or not (directory/'FV/UMS9620.fd').is_file():
         raise SystemExit('Missing platform build artifacts')
     record = {'schema': 1, 'source_files': source,
-              'edk2': subprocess.check_output(['git', '-C', str(ROOT/'edk2'), 'rev-parse', 'HEAD'], text=True).strip(),
               'abi_header_sha256': sha(a.abi_include/'pocketjs_boot_context.h'),
               'touch_firmware_sha256': sha(a.touch_firmware) if a.touch_firmware else None,
               'defines': {key: os.environ.get(key, default) for key, default in DEFAULTS.items()},
               'files': {str(f.relative_to(build)): sha(f) for f in files}}
+    if (build/'upstream.lock.json').is_file():
+        api = runpy.run_path(str(ROOT/'tools/upstream.py'))
+        upstream = json.loads((build/'upstream.lock.json').read_text())
+        paths = json.loads((build/'source-paths.json').read_text())
+        actual, _ = api['inspect'](Path(paths['edk2']))
+        if api['identity'](actual) != api['identity'](upstream):
+            raise SystemExit('Platform source checkout differs from the resolved upstream lock')
+        record.update(schema=2, edk2=upstream['dependencies']['edk2']['commit'], upstream_sources=upstream)
+    else:
+        record['edk2'] = subprocess.check_output(
+            ['git', '-C', str(ROOT/'edk2'), 'rev-parse', 'HEAD'], text=True).strip()
     manifest = build/'platform-build.json'
     if a.action == 'create':
         manifest.write_text(json.dumps(record, indent=2)+'\n')
@@ -48,4 +59,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        raise SystemExit(str(error)) from error
