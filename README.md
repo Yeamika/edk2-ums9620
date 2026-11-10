@@ -72,12 +72,14 @@ python3 tools/upstream.py prepare --output /path/to/build/platform-sources \
 
 主要输出在 `workspace/Build/Ums9620/RELEASE_GCC5/`：
 
-| 输出                                        | 用途                                                         |
-| ------------------------------------------- | ------------------------------------------------------------ |
-| `FV/UMS9620.fd`、FFS 和 FV 模板             | 平台组件，交给 `w202ds-boot` 加入 PocketJS 后重新生成最终 FD |
-| `AARCH64/AndroidLk.efi`                     | 返回已有 LK 的 Android 启动路径                              |
-| `AARCH64/DebianServer.efi`、`DebianKde.efi` | 从 ESP 加载对应 Linux 镜像与设备树                           |
-| `AARCH64/TouchScope.efi`                    | 触摸诊断应用；默认也在 FV 中                                 |
+| 输出                            | 用途                                                         |
+| ------------------------------- | ------------------------------------------------------------ |
+| `FV/UMS9620.fd`、FFS 和 FV 模板 | 平台组件，交给 `w202ds-boot` 加入 PocketJS 后重新生成最终 FD |
+
+ESP 启动器和诊断应用（`AndroidBoot`、`AndroidLk`、`DebianServer`、
+`DebianKde`、`HandoffProbe`、`TouchScope`）已移至组合仓库
+[`pocketjs4edk2_uefi/efi`](https://github.com/Yeamika/w202ds-boot/tree/main/pocketjs4edk2_uefi/efi)，
+由该仓库的独立 DSC 构建，不再进入平台 FV。
 
 输出根目录的 `upstream.lock.json` 保存 EDK II 和两个 Brotli 的实际来源，
 `source-paths.json` 保存本次源码位置，`platform-build.json` 校验这些来源、板级代码、配置、ABI 和产物哈希。
@@ -93,7 +95,10 @@ PYTHONDONTWRITEBYTECODE=1 TMPDIR=/path/to/build/tmp \
   python3 -m unittest discover -s tests -p test_hardware.py -v
 ```
 
-该测试编译并运行实际驱动 C 代码，检查触摸包、外设状态和生命周期。`test_android_boot.py`、`test_linux_boot.py` 还需要它们声明的真实 OS 镜像输入；它们不属于上述无镜像测试命令。
+该测试编译并运行实际驱动 C 代码，检查触摸包、外设状态和生命周期。原先位于本仓库的
+`test_android_boot.py`、`test_linux_boot.py` 已随 ESP 应用移至
+[`pocketjs4edk2_uefi/tests`](https://github.com/Yeamika/w202ds-boot/tree/main/pocketjs4edk2_uefi/tests)，
+它们仍需要各自声明的真实 OS 镜像输入。
 
 依赖获取与选择测试使用本地 Git 仓库，可单独运行：
 

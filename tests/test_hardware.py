@@ -56,7 +56,7 @@ class HardwareTest(unittest.TestCase):
             self.assertEqual(self.decode(self.packet(x,y)),(1,x,y,1))
 
     def test_real_dxe_lifecycle_and_read_only_power(self):
-        for name in ['hardware_state','watchdog','power_off','touch_start','touch_upload','touch_resume','touch_irq','touch_scope','handoff_record','power_read','adc_read','charger_read','charger_control','keys','keys_probe','gop_refresh','emmc_read','emmc_gpt']:
+        for name in ['hardware_state','watchdog','power_off','touch_start','touch_upload','touch_resume','touch_irq','handoff_record','power_read','adc_read','charger_read','charger_control','keys','keys_probe','gop_refresh','emmc_read','emmc_gpt']:
             output=self.out/name
             subprocess.run([self.cc,'-std=c11','-ffunction-sections','-fdata-sections',
                 '-Wl,--gc-sections','-fshort-wchar','-fno-builtin','-Werror',

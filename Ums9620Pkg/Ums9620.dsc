@@ -222,17 +222,4 @@
   FatPkg/EnhancedFatDxe/Fat.inf
   Ums9620Pkg/Drivers/DiagnosticBds/DiagnosticBds.inf
 
-!if $(W202_ANDROID_BOOT_TEST) == TRUE
-  Ums9620Pkg/Applications/AndroidBoot/AndroidBoot.inf
-!endif
-  # Standalone ESP application; only diagnostic builds embed/auto-launch it.
-  Ums9620Pkg/Applications/AndroidLk/AndroidLk.inf
-  Ums9620Pkg/Applications/LinuxBoot/DebianServer.inf
-  Ums9620Pkg/Applications/LinuxBoot/DebianKde.inf
-
-!if $(W202_HANDOFF_TEST) == TRUE
-  Ums9620Pkg/Applications/HandoffProbe/HandoffProbe.inf
-!endif
-!if $(W202_TOUCH_TEST) == TRUE
-  Ums9620Pkg/Applications/TouchScope/TouchScope.inf
-!endif
+  # ESP loaders are built independently by pocketjs4edk2_uefi.

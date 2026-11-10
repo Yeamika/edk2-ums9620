@@ -59,19 +59,7 @@ READ_LOCK_STATUS = TRUE
   INF FatPkg/EnhancedFatDxe/Fat.inf
   INF Ums9620Pkg/Drivers/DiagnosticBds/DiagnosticBds.inf
 
-!if $(W202_ANDROID_BOOT_TEST) == TRUE
-  INF Ums9620Pkg/Applications/AndroidBoot/AndroidBoot.inf
-!endif
-!if $(W202_LK_RETURN_TEST) == TRUE
-  INF Ums9620Pkg/Applications/AndroidLk/AndroidLk.inf
-!endif
-
-!if $(W202_HANDOFF_TEST) == TRUE
-  INF Ums9620Pkg/Applications/HandoffProbe/HandoffProbe.inf
-!endif
-!if $(W202_TOUCH_TEST) == TRUE
-  INF Ums9620Pkg/Applications/TouchScope/TouchScope.inf
-!endif
+  # ESP loaders are built independently by pocketjs4edk2_uefi.
 !if $(W202_TOUCH_RELOAD) == TRUE
   # Supplied explicitly by the board composition; no sibling source paths.
   FILE FREEFORM = 24bf1f0e-e35a-4814-a3df-f831020a2026 {

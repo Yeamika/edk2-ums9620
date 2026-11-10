@@ -17,7 +17,7 @@ Recovery actions and application-log storage belong to the independent runtime.
 
 ## Android boot status (2026-11-05)
 
-[AndroidLk](Applications/AndroidLk/README.md) consumes the suspended-LK return
+[AndroidLk](https://github.com/Yeamika/w202ds-boot/tree/main/pocketjs4edk2_uefi/efi/Android/AndroidLk) consumes the suspended-LK return
 contract, exits UEFI and resumes the native Android loader without resetting.
 The direct3 RAM diagnostic completed Android A startup with ADB/root and
 file-based encryption confirmed. The paired Android EFI is installed on the ESP.
@@ -33,7 +33,7 @@ EndOfDxe, so upstream SecurityStubDxe deferred third-party ESP applications.
 BDS now signals EndOfDxe before connecting controllers and launching the menu.
 UEFI Fastboot remains unimplemented; the existing USB debugger belongs to LK.
 
-The older [AndroidBoot prototype](Applications/AndroidBoot/README.md) loads the
+The older [AndroidBoot prototype](https://github.com/Yeamika/w202ds-boot/tree/main/pocketjs4edk2_uefi/efi/Android/AndroidBoot) loads the
 raw Android kernel and a captured DT. Its staging/CRC preflight passed, and the
 corrected ARM64 handoff reached the kernel, but userdata key decryption failed
 and init requested recovery. It remains a separate experiment. The failed reset
@@ -120,8 +120,8 @@ through the independently linked PocketJS host. Real RAMBoot has reached SEC/DXE
 read calibrated FGU voltage, delivered keys/pointer events, and exercised a
 returning EFI child. The current reload build has valid IRQ packet and user acceptance evidence
 above; earlier empty-packet and polling experiments are historical.
-The optional HandoffProbe is excluded unless W202_HANDOFF_TEST=TRUE. The optional
-colour stripe/hash diagnostics are excluded unless W202_DISPLAY_TEST=TRUE.
+HandoffProbe is now built independently in w202ds-boot and launched from the ESP.
+The optional colour stripe/hash diagnostics are excluded unless W202_DISPLAY_TEST=TRUE.
 W202_TOUCH_IRQ_DIAG=TRUE enables an isolated, logged touch sample on each new
 debounced key press. It never synthesizes pointer input and is disabled
 by default. The r47 experiment uses this to separate report availability from
@@ -131,9 +131,9 @@ delivery alone therefore does not explain the missing coordinates.
 W202_TOUCH_RESUME_TEST=TRUE adds a bounded AP sleep/awake experiment, always
 attempting awake on a failed sleep. It is disabled by default. Diagnostic code
 samples match seven stock firmware words, not a full-image integrity check.
-W202_TOUCH_TEST=TRUE (the default) includes the standalone TouchScope EFI app.
-W202_TOUCH_DIRECT=TRUE selects it directly in diagnostic BDS; the default is
-FALSE so normal boots enter the PocketJS menu. Volume down clears once and
+TouchScope is now a standalone ESP application in w202ds-boot; the menu loads
+EFI/Tools/TouchScope.efi. Legacy FV auto-launch switches are rejected by the
+platform build. Volume down clears once and
 returns to the menu on a second press within 800 ms.
 Its green pulse submits a small rectangle every 20 ms from the application
 loop; volume up toggles this with a static blue square, and volume down clears

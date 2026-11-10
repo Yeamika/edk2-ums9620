@@ -1,6 +1,12 @@
 #!/bin/bash
 # Diagnostic inherited-LK platform; not a drop-in flash image.
 set -euo pipefail
+for option in W202_ANDROID_BOOT_TEST W202_LK_RETURN_TEST W202_TOUCH_DIRECT W202_HANDOFF_TEST; do
+  if [[ ${!option:-FALSE} == TRUE ]]; then
+    echo "$option no longer embeds an application; build and launch the standalone ESP EFI in w202ds-boot" >&2
+    exit 2
+  fi
+done
 PJB_EDK=$(realpath "${1:?EDK II checkout}")
 PJB_PLATFORM=$(cd -- "$(dirname -- "$0")" && pwd -P)
 PJB_WORK=$(realpath -m "${2:?private build directory}")
