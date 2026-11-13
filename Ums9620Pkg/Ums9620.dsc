@@ -14,6 +14,7 @@
   DEFINE W202_TOUCH_RELOAD = FALSE
   DEFINE W202_STORAGE_TEST = FALSE
   DEFINE W202_BOARD_SERVICES = TRUE
+  DEFINE W202_LK_FASTBOOT = FALSE
   PLATFORM_NAME = Ums9620
   PLATFORM_GUID = ac7b8ab1-20d6-46fb-9e89-109f98887c41
   PLATFORM_VERSION = 0.1
@@ -22,12 +23,15 @@
   SUPPORTED_ARCHITECTURES = AARCH64
   BUILD_TARGETS = DEBUG|RELEASE
   SKUID_IDENTIFIER = DEFAULT
-  FLASH_DEFINITION = Ums9620Pkg/Ums9620.fdf
+  FLASH_DEFINITION = Ums9620Pkg/W202ds/W202ds.fdf
 !include MdePkg/MdeLibs.dsc.inc
 [BuildOptions]
   # The outer build supplies the public ABI; no sibling project paths here.
   GCC:*_*_AARCH64_CC_FLAGS = -fno-jump-tables -ffixed-x18 -I"$(PJB_BOOT_ABI_INCLUDE)"
   GCC:*_*_AARCH64_CC_XIPFLAGS == -mstrict-align
+!if $(W202_LK_FASTBOOT) == TRUE
+  GCC:*_*_AARCH64_CC_FLAGS = -DW202_LK_FASTBOOT
+!endif
 !if $(W202_DISPLAY_TEST) == TRUE
   GCC:*_*_AARCH64_CC_FLAGS = -DW202_DISPLAY_TEST
 !endif
@@ -70,7 +74,7 @@
   ArmGicArchLib|ArmPkg/Library/ArmGicArchLib/ArmGicArchLib.inf
   ArmGicLib|ArmPkg/Drivers/ArmGic/ArmGicLib.inf
   ArmLib|ArmPkg/Library/ArmLib/ArmBaseLib.inf
-  ArmPlatformLib|Ums9620Pkg/Library/LkInheritedPlatformLib/ArmPlatformLibNull.inf
+  ArmPlatformLib|Ums9620Pkg/W202ds/Library/LkInheritedPlatformLib/ArmPlatformLibNull.inf
   ArmPlatformStackLib|ArmPlatformPkg/Library/ArmPlatformStackLib/ArmPlatformStackLib.inf
   ArmMmuLib|ArmPkg/Library/ArmMmuLib/ArmMmuBaseLib.inf
   BaseLib|MdePkg/Library/BaseLib/BaseLib.inf
@@ -96,7 +100,7 @@
   PlatformPeiLib|ArmPlatformPkg/PlatformPei/PlatformPeiLib.inf
   PrePiLib|EmbeddedPkg/Library/PrePiLib/PrePiLib.inf
   PrintLib|MdePkg/Library/BasePrintLib/BasePrintLib.inf
-  SerialPortLib|Ums9620Pkg/Library/RamTraceSerialPortLib/RamTraceSerialPortLib.inf
+  SerialPortLib|Ums9620Pkg/W202ds/Library/RamTraceSerialPortLib/RamTraceSerialPortLib.inf
   TimeBaseLib|EmbeddedPkg/Library/TimeBaseLib/TimeBaseLib.inf
   TimerLib|ArmPkg/Library/ArmArchTimerLib/ArmArchTimerLib.inf
   UefiBootServicesTableLib|MdePkg/Library/UefiBootServicesTableLib/UefiBootServicesTableLib.inf
@@ -128,7 +132,7 @@
   VariablePolicyHelperLib|MdeModulePkg/Library/VariablePolicyHelperLib/VariablePolicyHelperLib.inf
   VariableFlashInfoLib|MdeModulePkg/Library/BaseVariableFlashInfoLib/BaseVariableFlashInfoLib.inf
   OrderedCollectionLib|MdePkg/Library/BaseOrderedCollectionRedBlackTreeLib/BaseOrderedCollectionRedBlackTreeLib.inf
-  ResetSystemLib|Ums9620Pkg/Library/Ump9620ResetSystemLib/Ump9620ResetSystemLib.inf
+  ResetSystemLib|Ums9620Pkg/W202ds/Library/Ump9620ResetSystemLib/Ump9620ResetSystemLib.inf
   RealTimeClockLib|EmbeddedPkg/Library/TemplateRealTimeClockLib/TemplateRealTimeClockLib.inf
   HiiLib|MdeModulePkg/Library/UefiHiiLib/UefiHiiLib.inf
   UefiHiiServicesLib|MdeModulePkg/Library/UefiHiiServicesLib/UefiHiiServicesLib.inf
@@ -157,6 +161,8 @@
 [PcdsFixedAtBuild]
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x27
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000003
+  # Bootstrap bank only (56 MiB). W202dsMemory.h adds a separate 72 MiB DXE
+  # resource and MMU mapping for 128 MiB total; do not extend into LK's buffer.
   gArmTokenSpaceGuid.PcdSystemMemoryBase|0x82800000
   gArmTokenSpaceGuid.PcdSystemMemorySize|0x03800000
   gArmPlatformTokenSpaceGuid.PcdSystemMemoryUefiRegionSize|0x03000000
@@ -213,13 +219,16 @@
   MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
   MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
   MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
-  Ums9620Pkg/Drivers/LkGopDxe/LkGopDxe.inf
-  Ums9620Pkg/Drivers/BoardServicesDxe/BoardServicesDxe.inf
-  Ums9620Pkg/Drivers/EmmcDxe/EmmcDxe.inf
+  Ums9620Pkg/W202ds/drivers/LkGopDxe/LkGopDxe.inf
+  Ums9620Pkg/W202ds/drivers/BoardServicesDxe/BoardServicesDxe.inf
+  Ums9620Pkg/W202ds/drivers/EmmcDxe/EmmcDxe.inf
+!if $(W202_LK_FASTBOOT) == TRUE
+  Ums9620Pkg/W202ds/drivers/LkFastbootDxe/LkFastbootDxe.inf
+!endif
   MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
   MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
   MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
   FatPkg/EnhancedFatDxe/Fat.inf
-  Ums9620Pkg/Drivers/DiagnosticBds/DiagnosticBds.inf
+  Ums9620Pkg/W202ds/drivers/DiagnosticBds/DiagnosticBds.inf
 
   # ESP loaders are built independently by pocketjs4edk2_uefi.

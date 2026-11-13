@@ -1,0 +1,7 @@
+{
+  "name": "Himax_firmware_guoxian.bin",
+  "bytes": 261120,
+  "sha256": "bdcd327d48628dd703b1d0a8ea778ef7f7aacd7beb227efdb78ea788928f0156",
+  "provided_by": "firmware/touch/Himax_firmware_guoxian.bin",
+  "origin": "w202ds-linux/6.18.35/Devices/touchscreen/firmware"
+}

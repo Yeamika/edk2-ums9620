@@ -1,5 +1,5 @@
 /* Exercise the real SDMA/BlockIo path against a command-driven SDHCI model. */
-#include "../Ums9620Pkg/Drivers/EmmcDxe/EmmcDxe.c"
+#include "../Ums9620Pkg/W202ds/drivers/EmmcDxe/EmmcDxe.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 BOOLEAN EFIAPI DebugPrintEnabled(VOID) { return FALSE; }
 BOOLEAN EFIAPI DebugPrintLevelEnabled(UINTN Level) { return FALSE; }

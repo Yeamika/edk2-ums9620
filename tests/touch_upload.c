@@ -1,7 +1,7 @@
 /* Exercise the real SPI burst writer, including its 32-byte FIFO boundaries. */
 #define W202_TOUCH_RELOAD
 #include <PiDxe.h>
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/Touch.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/Touch.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 static UINT32 spi[0x100/4];
 static UINT8 wire[132], received[108544], data[108544];

@@ -1,5 +1,5 @@
 /* Exercise the actual IRQ driver with a mocked GIC and EIC register bank. */
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/TouchIrq.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/TouchIrq.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 static UINT32 regs[6][0x100/4];
 static unsigned signals, eois, disables, enables, registered, clears;

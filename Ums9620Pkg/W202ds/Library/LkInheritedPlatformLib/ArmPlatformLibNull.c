@@ -12,6 +12,7 @@
 
 #include <Ppi/ArmMpCoreInfo.h>
 #include "LkTrace.h"
+#include "../../Include/W202dsMemory.h"
 
 // The LK handoff currently enters on the boot CPU only; AP startup is not supported.
 STATIC ARM_CORE_INFO  mBootCoreInfo[] = {
@@ -52,6 +53,20 @@ ArmPlatformGetBootMode (
   // These shared pages are outside the smaller FD. Keep DXE's page allocator
   // from reusing calibration, boot metrics and the RAM serial log.
   BuildMemoryAllocationHob (0x82ffe000, 0x2000, EfiReservedMemoryType);
+  // MemoryPeim has already installed the bootstrap bank and its MMU map.
+  // Publish only this additional DRAM bank to DXE's allocator, using the same
+  // resource attributes as ArmPlatformPkg/MemoryInitPei. OS staging stays out.
+  BuildResourceDescriptorHob (
+    EFI_RESOURCE_SYSTEM_MEMORY,
+    EFI_RESOURCE_ATTRIBUTE_PRESENT |
+    EFI_RESOURCE_ATTRIBUTE_INITIALIZED |
+    EFI_RESOURCE_ATTRIBUTE_WRITE_COMBINEABLE |
+    EFI_RESOURCE_ATTRIBUTE_WRITE_THROUGH_CACHEABLE |
+    EFI_RESOURCE_ATTRIBUTE_WRITE_BACK_CACHEABLE |
+    EFI_RESOURCE_ATTRIBUTE_TESTED,
+    W202DS_UEFI_EXTRA_MEMORY_BASE,
+    W202DS_UEFI_EXTRA_MEMORY_SIZE
+    );
   return BOOT_WITH_FULL_CONFIGURATION;
 }
 

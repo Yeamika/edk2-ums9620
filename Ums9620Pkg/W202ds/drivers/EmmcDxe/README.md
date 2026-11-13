@@ -10,6 +10,6 @@
 
 ## 构建与验证
 
-随 Ums9620Pkg 构建为 `EmmcDxe.efi`，输入是 LK handoff 记录和继承的控制器状态，输出为 UEFI BlockIo 协议。项目 `tests/emmc_read.c` 模拟实际驱动的 SDMA 数据、非对齐调用、跨 chunk 边界、CMD12 失败、超时、ESP 写范围及寄存器恢复；不是物理 eMMC 时序证明。
+随 `Ums9620Pkg/Ums9620.dsc` 构建为 `EmmcDxe.efi`，输入是 LK handoff 记录和继承的控制器状态，输出为 UEFI BlockIo 协议。[`tests/emmc_read.c`](../../../../tests/emmc_read.c) 模拟实际驱动的 SDMA 数据、非对齐调用、跨 chunk 边界、CMD12 失败、超时、ESP 写范围及寄存器恢复；不是物理 eMMC 时序证明。
 
 单扇区路径已有 ESP 读写实机记录。2026-11-05 多块读取通过主机测试及真机对照：约 41 MB 的内核与 initrd 加载流程从 5187.399 ms 降至 493.834 ms；其中内核读取 2036.799 → 122.222 ms，initrd 读取 2901.672 → 175.438 ms。重复启动约 494 ms，载荷长度、CRC 检查通过并进入 Linux。计时包含六个加载阶段，不包含菜单动画或 ExitBootServices 后的内核启动时间。

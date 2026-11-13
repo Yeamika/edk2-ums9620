@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = {'W202_STORAGE_TEST': 'FALSE', 'W202_BOARD_SERVICES': 'TRUE',
             'W202_ANDROID_BOOT_TEST': 'FALSE', 'W202_ANDROID_BOOT_ENTER': 'FALSE',
             'W202_LK_RETURN_TEST': 'FALSE', 'W202_LK_RETURN_PROBE_ONLY': 'FALSE',
-            'W202_TOUCH_TEST': 'TRUE', 'W202_TOUCH_DIRECT': 'FALSE', 'W202_TOUCH_RELOAD': 'FALSE'}
+            'W202_TOUCH_TEST': 'TRUE', 'W202_TOUCH_DIRECT': 'FALSE', 'W202_TOUCH_RELOAD': 'TRUE',
+            'W202_LK_FASTBOOT': 'FALSE'}
 
 
 def sha(path):
@@ -24,7 +25,7 @@ def main():
     p.add_argument('action', choices=('create', 'verify'))
     p.add_argument('--build', type=Path, required=True)
     p.add_argument('--abi-include', type=Path, required=True)
-    p.add_argument('--touch-firmware', type=Path)
+    p.add_argument('--touch-firmware', type=Path, default=ROOT/'Ums9620Pkg/W202ds/firmware/touch/Himax_firmware_guoxian.bin')
     a = p.parse_args()
     build = a.build.resolve()
     source = {str(f.relative_to(ROOT)): sha(f) for f in sorted((ROOT/'Ums9620Pkg').rglob('*'))
@@ -36,6 +37,8 @@ def main():
         raise SystemExit('Missing platform build artifacts')
     record = {'schema': 1, 'source_files': source,
               'abi_header_sha256': sha(a.abi_include/'pocketjs_boot_context.h'),
+              'fastboot_abi_sha256': sha(a.abi_include/'pj4edk2_fastboot.h')
+                  if os.environ.get('W202_LK_FASTBOOT')=='TRUE' else None,
               'touch_firmware_sha256': sha(a.touch_firmware) if a.touch_firmware else None,
               'defines': {key: os.environ.get(key, default) for key, default in DEFAULTS.items()},
               'files': {str(f.relative_to(build)): sha(f) for f in files}}

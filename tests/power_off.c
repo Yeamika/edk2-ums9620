@@ -1,4 +1,4 @@
-#include "../Ums9620Pkg/Library/Ump9620ResetSystemLib/PowerOff.c"
+#include "../Ums9620Pkg/W202ds/Library/Ump9620ResetSystemLib/PowerOff.c"
 BOOLEAN EFIAPI DebugPrintEnabled(VOID) { return FALSE; }
 BOOLEAN EFIAPI DebugPrintLevelEnabled(CONST UINTN Level) { return FALSE; }
 VOID EFIAPI DebugPrint(UINTN Level,CONST CHAR8 *Format,...) {}

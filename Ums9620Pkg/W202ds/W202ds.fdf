@@ -48,16 +48,19 @@ READ_LOCK_STATUS = TRUE
   INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
   INF MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
   INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
-  INF Ums9620Pkg/Drivers/LkGopDxe/LkGopDxe.inf
+  INF Ums9620Pkg/W202ds/drivers/LkGopDxe/LkGopDxe.inf
 !if $(W202_STORAGE_TEST) != TRUE && $(W202_BOARD_SERVICES) == TRUE
-  INF Ums9620Pkg/Drivers/BoardServicesDxe/BoardServicesDxe.inf
+  INF Ums9620Pkg/W202ds/drivers/BoardServicesDxe/BoardServicesDxe.inf
 !endif
-  INF Ums9620Pkg/Drivers/EmmcDxe/EmmcDxe.inf
+  INF Ums9620Pkg/W202ds/drivers/EmmcDxe/EmmcDxe.inf
+!if $(W202_LK_FASTBOOT) == TRUE
+  INF Ums9620Pkg/W202ds/drivers/LkFastbootDxe/LkFastbootDxe.inf
+!endif
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
   INF MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
   INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
   INF FatPkg/EnhancedFatDxe/Fat.inf
-  INF Ums9620Pkg/Drivers/DiagnosticBds/DiagnosticBds.inf
+  INF Ums9620Pkg/W202ds/drivers/DiagnosticBds/DiagnosticBds.inf
 
   # ESP loaders are built independently by pocketjs4edk2_uefi.
 !if $(W202_TOUCH_RELOAD) == TRUE

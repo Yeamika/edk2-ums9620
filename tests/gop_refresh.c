@@ -2,7 +2,7 @@
 #include <Uefi.h>
 #define W202_LK_TRACE_H
 STATIC VOID LkTraceStage(UINT64 Stage) {}
-#include "../Ums9620Pkg/Drivers/LkGopDxe/LkGopDxe.c"
+#include "../Ums9620Pkg/W202ds/drivers/LkGopDxe/LkGopDxe.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 BOOLEAN EFIAPI DebugPrintEnabled(VOID) { return FALSE; }
 BOOLEAN EFIAPI DebugPrintLevelEnabled(UINTN Level) { return FALSE; }

@@ -1,5 +1,5 @@
 /* Host regression using the real DXE state machine; only hardware/BS mocked. */
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/BoardServicesDxe.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/BoardServicesDxe.c"
 BOOLEAN EFIAPI DebugPrintEnabled(VOID) { return FALSE; }
 BOOLEAN EFIAPI DebugPrintLevelEnabled(UINTN Level) { return FALSE; }
 VOID EFIAPI DebugPrint(UINTN Level, CONST CHAR8 *Format, ...) {}

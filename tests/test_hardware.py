@@ -17,7 +17,7 @@ class HardwareTest(unittest.TestCase):
         cls.abi=Path(os.environ['PJB_BOOT_ABI_INCLUDE'])
         cls.edk=Path(os.environ.get('PJB_EDK2_ROOT') or ROOT/'edk2')
         subprocess.run([cls.cc,'-shared','-fPIC','-Wall','-Wextra','-Werror',
-            str(ROOT/'Ums9620Pkg/Drivers/BoardServicesDxe/TouchPacket.c'),
+            str(ROOT/'Ums9620Pkg/W202ds/drivers/BoardServicesDxe/TouchPacket.c'),
             '-o',str(cls.out/'touch.so')],check=True)
         cls.lib=ctypes.CDLL(str(cls.out/'touch.so'))
         cls.parse=cls.lib.W202ParseTouch
@@ -56,13 +56,15 @@ class HardwareTest(unittest.TestCase):
             self.assertEqual(self.decode(self.packet(x,y)),(1,x,y,1))
 
     def test_real_dxe_lifecycle_and_read_only_power(self):
-        for name in ['hardware_state','watchdog','power_off','touch_start','touch_upload','touch_resume','touch_irq','handoff_record','power_read','adc_read','charger_read','charger_control','keys','keys_probe','gop_refresh','emmc_read','emmc_gpt']:
+        for name in ['hardware_state','watchdog','power_off','touch_start','touch_upload','touch_resume','touch_irq','handoff_record','power_read','adc_read','charger_read','charger_control','keys','keys_probe','gop_refresh','gop_modes','emmc_read','emmc_gpt','memory_layout','memory_layout_fastboot','fastboot']:
             output=self.out/name
             subprocess.run([self.cc,'-std=c11','-ffunction-sections','-fdata-sections',
                 '-Wl,--gc-sections','-fshort-wchar','-fno-builtin','-Werror',
                 '-DEFIAPI=__attribute__((ms_abi))',
                 '-I'+str(self.edk/'MdePkg/Include'),'-I'+str(self.edk/'MdePkg/Include/X64'),
                 '-I'+str(self.edk/'MdeModulePkg/Include'),
+                '-I'+str(self.edk/'ArmPkg/Include'),
+                '-I'+str(self.edk/'ArmPlatformPkg/Include'),
                 '-I'+str(self.edk/'EmbeddedPkg/Include'),
                 '-I'+str(self.abi),
                 str(ROOT/'tests'/f'{name}.c'),'-o',str(output)],check=True)

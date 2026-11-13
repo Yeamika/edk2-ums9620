@@ -1,7 +1,7 @@
 /* Real touch SPI/startup code with a byte-level retained-IC emulator.
  * Check that identity/ownership gates precede writes and failed readback
  * cannot expose input. No reset or firmware-upload command is permitted. */
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/Touch.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/Touch.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 typedef struct { UINT32 address, value; } CELL;
 static CELL cells[32];

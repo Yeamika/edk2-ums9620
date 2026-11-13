@@ -1,5 +1,5 @@
 /* Exercise real watchdog C with a locked, posted-write PMIC transport. */
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/Watchdog.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/Watchdog.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 static UINT32 control=0xa, raw, fifo=BIT10;
 static EFI_STATUS read_status;

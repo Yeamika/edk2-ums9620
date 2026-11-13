@@ -1,5 +1,5 @@
 /* Validate the actual write-scope parser against corrupt and overlapping GPTs. */
-#include "../Ums9620Pkg/Drivers/EmmcDxe/Gpt.c"
+#include "../Ums9620Pkg/W202ds/drivers/EmmcDxe/Gpt.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 static UINT8 pool[131072];
 EFI_GUID gEfiPartTypeSystemPartGuid = EFI_PART_TYPE_EFI_SYSTEM_PART_GUID;

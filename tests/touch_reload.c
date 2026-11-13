@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #undef NULL
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/TouchReload.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/TouchReload.c"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while (0)
 static UINT8 *image, config[W202_TOUCH_CONFIG_SIZE], entity[108544], device_config[W202_TOUCH_CONFIG_SIZE];
 static unsigned writes, memory_writes, activated, delays, fault, forbidden;

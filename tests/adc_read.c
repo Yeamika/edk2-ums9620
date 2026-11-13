@@ -1,5 +1,5 @@
 /* Exercise the real conversion, calibration and cleanup with a PMIC model. */
-#include "../Ums9620Pkg/Drivers/BoardServicesDxe/Adc.c"
+#include "../Ums9620Pkg/W202ds/drivers/BoardServicesDxe/Adc.c"
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 BOOLEAN EFIAPI DebugPrintEnabled(VOID) { return FALSE; }
 BOOLEAN EFIAPI DebugPrintLevelEnabled(UINTN Level) { return FALSE; }

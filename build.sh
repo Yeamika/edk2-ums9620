@@ -1,25 +1,33 @@
 #!/bin/bash
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "$0")" && pwd -P)
-output= abi= firmware= edk2=
+output= abi= edk2=
+board=w202ds
+firmware="$repo/Ums9620Pkg/W202ds/firmware/touch/Himax_firmware_guoxian.bin"
 source_args=()
 while (($#)); do
   case "$1" in
+    --target|--board) board=${2:?}; shift 2;;
     --output) output=${2:?}; shift 2;;
     --abi-include) abi=${2:?}; shift 2;;
     --touch-firmware) firmware=${2:?}; shift 2;;
     --edk2) edk2=${2:?}; shift 2;;
     --source-lock|--source-cache|--source-repo|--source-ref) source_args+=("$1" "${2:?}"); shift 2;;
-    --help|-h) echo 'Usage: build.sh --output DIR --abi-include DIR [--touch-firmware FILE] [--edk2 DIR] [--source-cache DIR] [--source-lock FILE] [--source-repo NAME=URL] [--source-ref NAME=COMMIT|BRANCH|TAG|latest]'; exit 0;;
+    --help|-h) echo 'Usage: build.sh [--target w202ds] --output DIR --abi-include DIR [--touch-firmware FILE] [--edk2 DIR] [--source-cache DIR] [--source-lock FILE] [--source-repo NAME=URL] [--source-ref NAME=COMMIT|BRANCH|TAG|latest]'; exit 0;;
     *) echo "Unknown option: $1" >&2; exit 2;;
   esac
 done
+if [[ $board != w202ds ]]; then
+  echo "Unsupported target: $board (only w202ds is implemented)" >&2
+  exit 2
+fi
 : "${output:?pass --output}" "${abi:?pass --abi-include}"
 output=$(realpath -m "$output")
 case "$output/" in "$repo/"*) echo 'Output must be outside the source tree' >&2; exit 2;; esac
 test ! -e "$output" || { echo 'Choose a fresh platform output directory' >&2; exit 2; }
 edk2_args=()
 if [[ -n $edk2 ]]; then edk2_args=(--edk2 "$edk2"); fi
+python3 "$repo/tools/check-touch-firmware.py" "$firmware"
 python3 "$repo/tools/upstream.py" prepare --output "$output" "${edk2_args[@]}" "${source_args[@]}"
 edk2=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["edk2"])' "$output/source-paths.json")
 if [[ -z ${EDK_TOOLS_PATH:-} ]]; then
