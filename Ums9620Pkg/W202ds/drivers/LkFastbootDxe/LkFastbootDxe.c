@@ -11,6 +11,8 @@
 STATIC W202_LK_FASTBOOT_DESCRIPTOR mDescriptor;
 STATIC BOOLEAN mActive, mExited;
 STATIC EFI_EVENT mExit;
+STATIC EFI_EVENT mTimer;
+STATIC UINT32 mPending;
 STATIC PJ4EDK2_FASTBOOT_PROTOCOL mProtocol;
 
 STATIC EFI_STATUS Call(UINT64 Operation, UINT32 *Flags) {
@@ -34,21 +36,40 @@ STATIC EFI_STATUS EFIAPI Start(PJ4EDK2_FASTBOOT_PROTOCOL *This) {
   if (mExited) return EFI_UNSUPPORTED;
   if (mActive) return EFI_SUCCESS;
   Status=Call(W202_LK_FB_START,NULL);
-  if (!EFI_ERROR(Status)) mActive=TRUE;
+  if (!EFI_ERROR(Status)) {
+    mPending=0;mActive=TRUE;
+    Status=gBS->SetTimer(mTimer,TimerPeriodic,100000); // 10 ms, independent of rendering.
+    if (EFI_ERROR(Status)) { Call(W202_LK_FB_STOP,NULL);mActive=FALSE; }
+  }
   return Status;
 }
 STATIC EFI_STATUS EFIAPI Poll(PJ4EDK2_FASTBOOT_PROTOCOL *This,UINT32 *Flags) {
   if (This!=&mProtocol || Flags==NULL) return EFI_INVALID_PARAMETER;
   *Flags=0;
   if (!mActive || mExited) return EFI_NOT_READY;
-  return Call(W202_LK_FB_POLL,Flags);
+  EFI_TPL Old=gBS->RaiseTPL(TPL_NOTIFY);
+  EFI_STATUS Status=Call(W202_LK_FB_POLL,Flags);
+  if (!EFI_ERROR(Status)) {
+    *Flags|=mPending&~PJ4EDK2_FASTBOOT_BUSY;mPending=0;
+  }
+  gBS->RestoreTPL(Old);
+  return Status;
+}
+STATIC VOID EFIAPI Pump(EFI_EVENT Event,VOID *Context) {
+  UINT32 Flags=0;
+  (VOID)Event;(VOID)Context;
+  if (mActive && !mExited && !EFI_ERROR(Call(W202_LK_FB_POLL,&Flags)))
+    /* Busy is a level; one-shot actions must survive until the client polls. */
+    mPending=(mPending&~PJ4EDK2_FASTBOOT_BUSY)|Flags;
 }
 STATIC EFI_STATUS EFIAPI Stop(PJ4EDK2_FASTBOOT_PROTOCOL *This) {
   EFI_STATUS Status;
   if (This!=&mProtocol) return EFI_INVALID_PARAMETER;
   if (!mActive) return EFI_SUCCESS;
+  gBS->SetTimer(mTimer,TimerCancel,0);
   Status=Call(W202_LK_FB_STOP,NULL);
-  if (!EFI_ERROR(Status)) mActive=FALSE;
+  if (!EFI_ERROR(Status)) { mActive=FALSE;mPending=0; }
+  else gBS->SetTimer(mTimer,TimerPeriodic,100000);
   return Status;
 }
 STATIC VOID EFIAPI Exit(EFI_EVENT Event,VOID *Context) {
@@ -67,10 +88,12 @@ EFI_STATUS EFIAPI Initialize(EFI_HANDLE Image,EFI_SYSTEM_TABLE *System) {
   if (!W202LkReturnValid(&Return) || !W202LkFastbootValid(&mDescriptor))
     return EFI_UNSUPPORTED; // Optional service absent in older LK builds.
   mProtocol=(PJ4EDK2_FASTBOOT_PROTOCOL){PJ4EDK2_FASTBOOT_REVISION,sizeof(mProtocol),Start,Poll,Stop};
+  Status=gBS->CreateEvent(EVT_TIMER|EVT_NOTIFY_SIGNAL,TPL_NOTIFY,Pump,NULL,&mTimer);
+  if (EFI_ERROR(Status)) return Status;
   Status=gBS->CreateEventEx(EVT_NOTIFY_SIGNAL,TPL_NOTIFY,Exit,NULL,
                           &gEfiEventExitBootServicesGuid,&mExit);
-  if (EFI_ERROR(Status)) return Status;
+  if (EFI_ERROR(Status)) { gBS->CloseEvent(mTimer);return Status; }
   Status=gBS->InstallMultipleProtocolInterfaces(&Image,&Guid,&mProtocol,NULL);
-  if (EFI_ERROR(Status)) gBS->CloseEvent(mExit);
+  if (EFI_ERROR(Status)) { gBS->CloseEvent(mExit);gBS->CloseEvent(mTimer); }
   return Status;
 }
