@@ -56,10 +56,26 @@ int main(void) {
   chip[1][1]=0x9a;chip[1][11]=0x14;
   controller[0][1]=0x92;controller[0][2]=3;controller[0][8]=51;
   CHECK(W202ChargeUpdate(&s,700)==EFI_SUCCESS && chip[0][1]==0x8a && chip[1][1]==0x8a);
-  CHECK(!mChargeRequested && !mChargeOwned); /* Boot never auto-enables. */
+  CHECK(!mChargeRequested && !mChargeOwned); /* No request before DXE startup. */
+  /* DXE requests charging even if the cable is absent at startup. */
+  s.external_power=0;
+  CHECK(W202ChargeRequest(&s,700,1)==EFI_NOT_READY && mChargeRequested && !mChargeOwned);
+  s.external_power=1;
+  CHECK(W202ChargeUpdate(&s,700)==EFI_SUCCESS && mChargeOwned);
   CHECK(W202ChargeRequest(&s,700,1)==EFI_SUCCESS && chip[0][1]==0x9a && mChargeOwned);
   CHECK(chip[1][1]==0x8a && gate==0xa0000000 && !bad_write);
   CHECK(controller[0][0]==0 && controller[0][1]==0x92 && controller[0][2]==3 && controller[0][8]==51);
+  /* USB attach can replace the factory input limit with any lower value.
+   * Resume at that exact limit; do not rewrite it to 2100mA. */
+  for (UINT8 limit=0;limit<=0x14;++limit) {
+    chip[0][0]=limit;
+    CHECK(W202ChargeRequest(&s,700,1)==EFI_SUCCESS && mChargeOwned);
+    CHECK(chip[0][0]==limit && !bad_write);
+  }
+  chip[0][0]=0x15;
+  CHECK(W202ChargeUpdate(&s,700)==EFI_ACCESS_DENIED && !mChargeOwned);
+  chip[0][0]=0x14;
+  CHECK(W202ChargeRequest(&s,700,1)==EFI_SUCCESS && mChargeOwned);
   before=writes;CHECK(W202ChargeUpdate(&s,700)==EFI_SUCCESS && writes==before);
   CHECK(W202ChargeUpdate(&s,356)==EFI_ACCESS_DENIED && chip[0][1]==0x8a && !mChargeRequested);
   CHECK(W202ChargeUpdate(&s,700)==EFI_SUCCESS && !mChargeOwned); /* Fault does not restart. */
@@ -91,6 +107,12 @@ int main(void) {
   CHECK(W202ChargeRequest(&s,700,1)==EFI_SUCCESS && mChargeOwned);
   s.external_power=0;CHECK(W202ChargeUpdate(&s,700)==EFI_NOT_READY && !mChargeOwned && mChargeRequested);
   s.external_power=1;CHECK(W202ChargeUpdate(&s,700)==EFI_SUCCESS && mChargeOwned);
+  s.external_power=0;CHECK(W202ChargeUpdate(&s,700)==EFI_NOT_READY && mChargeRequested);
+  chip[0][0]=0x04; /* Actual W202DS replug state: 500mA input limit. */
+  s.external_power=1;
+  CHECK(W202ChargeUpdate(&s,700)==EFI_SUCCESS && mChargeOwned && mChargeRequested);
+  CHECK(chip[0][0]==0x04);
+  chip[0][0]=0x14;
   /* Replug can report external power before PG or source detection settles. */
   chip[0][8]=0x20;
   CHECK(W202ChargeUpdate(&s,700)==EFI_NOT_READY && mChargeRequested && !mChargeOwned);

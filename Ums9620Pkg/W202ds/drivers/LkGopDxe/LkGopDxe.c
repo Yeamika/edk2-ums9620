@@ -11,24 +11,23 @@
 #include <Library/TimerLib.h>
 #include <Library/DebugLib.h>
 #include <Library/CacheMaintenanceLib.h>
+#include "pj4edk2_display.h"
 #include "../../Library/LkInheritedPlatformLib/LkTrace.h"
-// Keep inherited panel/DSI setup. Mode 0 remains the EFI/OS handoff ABI.
-STATIC EFI_GRAPHICS_OUTPUT_MODE_INFORMATION mInfo = {
-  0, 1200, 1920, PixelBitMask, {0xf800, 0x07e0, 0x001f, 0}, 1200
-};
+// One public landscape mode. DPU owns rotation; no portrait compatibility mode.
 STATIC EFI_GRAPHICS_OUTPUT_MODE_INFORMATION mNativeInfo = {
-  0, 1920, 1200, PixelBlueGreenRedReserved8BitPerColor, {0, 0, 0, 0}, 1920
+  0, 1920, 1200, PixelBlueGreenRedReserved8BitPerColor, {0,0,0,0}, 1920
 };
-STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE mMode = {2, 0, &mInfo, sizeof(mInfo), 0xb0000000, 1200 * 1920 * 2};
+STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE mMode = {1,0,&mNativeInfo,sizeof(mNativeInfo),0,1920*1200*4};
 STATIC FRAME_BUFFER_CONFIGURE *mConfigure;
-STATIC FRAME_BUFFER_CONFIGURE *mConfigurations[2];
-STATIC UINT32 mInheritedLayer, mInheritedAlpha;
-STATIC UINT32 mInheritedGeometry[5];
-STATIC CONST UINTN mGeometryRegisters[5]={0x44,0x48,0x4c,0x50,0x60};
+STATIC UINTN mConfigurationSize;
+STATIC EFI_PHYSICAL_ADDRESS mNativeBase,mAlternateBase,mFrontBase;
 STATIC UINT32 mDpuCfg;
 STATIC UINTN mRefreshCount;
-/* DPU r6p0, inherited panel/DSI/rotation. The LK page uses command-mode
- * single-run, so writing its framebuffer alone does not present a frame.
+STATIC BOOLEAN mPinned;
+#define HANDOFF_BASE 0xb0000000ULL
+#define NATIVE_BYTES (1920*1200*4)
+/* DPU r6p0, inherited panel/DSI/rotation. Explicitly latch updated layer
+ * state for streaming scanout and trigger single-run scanout when needed.
  * Offsets/trigger bits: pinned sprd LK dpu_r6p0.c and W202 DRM driver.
  * Poll raw status: EDK2 does not own the inherited display interrupt. */
 #define DPU_REG(Offset) (0x31000000 + (Offset))
@@ -55,61 +54,81 @@ STATIC EFI_STATUS Refresh(VOID) {
   DEBUG((DEBUG_WARN,"W202_GOP timeout raw=%08x ctrl=%08x cfg=%08x\n",Raw,MmioRead32(DPU_REG(0x08)),mDpuCfg));
   return EFI_TIMEOUT;
 }
-STATIC EFI_STATUS EFIAPI Query(EFI_GRAPHICS_OUTPUT_PROTOCOL *This, UINT32 Mode, UINTN *Size, EFI_GRAPHICS_OUTPUT_MODE_INFORMATION **Info) {
+STATIC EFI_STATUS EFIAPI Query(EFI_GRAPHICS_OUTPUT_PROTOCOL *This,UINT32 Mode,UINTN *Size,EFI_GRAPHICS_OUTPUT_MODE_INFORMATION **Info) {
   if (!This || !Size || !Info) return EFI_INVALID_PARAMETER;
-  if (Mode >= mMode.MaxMode) return EFI_UNSUPPORTED;
-  *Info = AllocateCopyPool(sizeof(mInfo), Mode ? &mNativeInfo : &mInfo);
+  if (Mode) return EFI_UNSUPPORTED;
+  *Info=AllocateCopyPool(sizeof(mNativeInfo),&mNativeInfo);
   if (!*Info) return EFI_OUT_OF_RESOURCES;
-  *Size = sizeof(mInfo); return EFI_SUCCESS;
+  *Size=sizeof(mNativeInfo);return EFI_SUCCESS;
 }
-STATIC EFI_STATUS EFIAPI Set(EFI_GRAPHICS_OUTPUT_PROTOCOL *This, UINT32 Mode) {
-  EFI_STATUS Status;
-  UINTN I, X, Y;
-  UINT16 *Temporary;
-  volatile UINT16 *Short=(volatile UINT16 *)(UINTN)mMode.FrameBufferBase;
-  volatile UINT32 *Wide=(volatile UINT32 *)(UINTN)mMode.FrameBufferBase;
-  if (!This) return EFI_INVALID_PARAMETER;
-  if (Mode>=mMode.MaxMode) return EFI_UNSUPPORTED;
-  if (Mode==mMode.Mode) return Refresh();
-  // Rotated packing needs scratch only at mode/EFI boundaries, never per frame.
-  Temporary=AllocatePool(1200*1920*2);
-  if (!Temporary) return EFI_OUT_OF_RESOURCES;
-  /* Only expose mode 1 on inherited single-run scanout. Finish the previous
-   * frame before changing the in-place storage or layer interpretation. */
-  Status=Refresh();
-  if (EFI_ERROR(Status)) {FreePool(Temporary);return Status;}
-  if (Mode) {
-    for (I=0;I<1200*1920;++I) Temporary[I]=Short[I];
-    for (Y=0;Y<1200;++Y) for (X=0;X<1920;++X) {
-      UINT32 V=Temporary[X*1200+1199-Y],R=(V>>11)&31,G=(V>>5)&63,B=V&31;
-      Wide[Y*1920+X]=(((R<<3)|(R>>2))<<16)|(((G<<2)|(G>>4))<<8)|((B<<3)|(B>>2));
-    }
-  } else {
-    // Compatibility conversion occurs only when leaving the menu, not on
-    // every UI frame. Reconstruct the physical portrait layout for old EFI.
-    for (Y=0;Y<1200;++Y) for (X=0;X<1920;++X) {
-      UINT32 V=Wide[Y*1920+X];
-      Temporary[X*1200+1199-Y]=(UINT16)(((V>>8)&0xf800)|((V>>5)&0x07e0)|((V>>3)&0x001f));
-    }
-    for (I=0;I<1200*1920;++I) Short[I]=Temporary[I];
-  }
-  FreePool(Temporary);
-  WriteBackDataCacheRange((VOID *)(UINTN)mMode.FrameBufferBase,1200*1920*(Mode?4:2));
+STATIC EFI_STATUS Quiesce(VOID) {
+  UINTN Count;
+  if (mDpuCfg&(BIT0|BIT1)) return Refresh();
+  // DPI streaming keeps reading the framebuffer between updates. Stop it
+  // before changing format or buffers, as the native r6p0 driver does.
+  MmioWrite32(DPU_REG(0x254),BIT0);
   MemoryFence();
-  /* r6p0 code 1 = DRM counter-clockwise 90. This composes the previous CPU
-   * clockwise 90 with the board's inherited 180 mounting. Android r6p0
-   * dpu_layer() swaps destination dimensions for quarter turns: both layer
-   * sizes hold 1920x1200, with scaling disabled. Panel/DSI stay 1200x1920. */
-  for (I=0;I<5;++I)
-    MmioWrite32(DPU_REG(mGeometryRegisters[I]),Mode?
-      (I<2?0x04b00780:(I==2?1920:0)):mInheritedGeometry[I]);
-  MmioWrite32(DPU_REG(0x54),Mode?0xff:mInheritedAlpha);
-  MmioWrite32(DPU_REG(0x40),Mode?((mInheritedLayer&~(0x007007f0U|BIT24))|0x00100030|BIT2):mInheritedLayer);
-  mMode.Mode=Mode;mMode.Info=Mode?&mNativeInfo:&mInfo;
-  mMode.FrameBufferSize=1200*1920*(Mode?4:2);mConfigure=mConfigurations[Mode];
-  // Record the actual mode before presenting: callers can roll back even if
-  // the hardware times out after accepting the new register values.
+  MmioWrite32(DPU_REG(8),MmioRead32(DPU_REG(8))|BIT1);
+  for (Count=0;Count<1500;++Count) {
+    if ((MmioRead32(DPU_REG(0x25c))&BIT0) &&
+        !((MmioRead32(DPU_REG(0x754))|MmioRead32(DPU_REG(0x758)))&BIT15)) {
+      // Refresh must issue RUN, even if the inherited RUN bit read as set.
+      MmioWrite32(DPU_REG(8),MmioRead32(DPU_REG(8))&~(BIT0|BIT1));
+      return EFI_SUCCESS;
+    }
+    MicroSecondDelay(100);
+  }
+  DEBUG((DEBUG_WARN,"W202_GOP stop timeout raw=%08x ctrl=%08x\n",MmioRead32(DPU_REG(0x25c)),MmioRead32(DPU_REG(8))));
+  // No pixels or geometry changed. Resume the inherited scanout if possible.
+  Refresh();
+  return EFI_TIMEOUT;
+}
+STATIC EFI_STATUS EFIAPI Set(EFI_GRAPHICS_OUTPUT_PROTOCOL *This,UINT32 Mode) {
+  if (!This) return EFI_INVALID_PARAMETER;
+  return Mode?EFI_UNSUPPORTED:Refresh();
+}
+/* Freeze the final landscape frame into the board's reserved logo RAM.
+ * Only a same-layout copy is needed: no mode, format or pixel rotation change.
+ * The menu's private double buffers can then be reclaimed by the next stage.
+ */
+STATIC EFI_STATUS EFIAPI Handoff(PJ4EDK2_DISPLAY_PROTOCOL *This) {
+  EFI_STATUS Status;
+  UINTN Size=mConfigurationSize;
+  if (!This) return EFI_INVALID_PARAMETER;
+  if (mPinned) return EFI_SUCCESS;
+  Status=Quiesce();if (EFI_ERROR(Status)) return Status;
+  CopyMem((VOID *)(UINTN)HANDOFF_BASE,(VOID *)(UINTN)mFrontBase,NATIVE_BYTES);
+  WriteBackDataCacheRange((VOID *)(UINTN)HANDOFF_BASE,NATIVE_BYTES);
+  MemoryFence();
+  MmioWrite32(DPU_REG(0x30),HANDOFF_BASE);
+  mFrontBase=mMode.FrameBufferBase=HANDOFF_BASE;
+  Status=FrameBufferBltConfigure((VOID *)(UINTN)HANDOFF_BASE,&mNativeInfo,mConfigure,&Size);
+  if (EFI_ERROR(Status)) return Status;
+  mPinned=TRUE;
   return Refresh();
+}
+STATIC EFI_STATUS Present(UINTN X,UINTN Y,UINTN W,UINTN H) {
+  EFI_STATUS Status;
+  UINTN Row,Size;
+  EFI_PHYSICAL_ADDRESS Draw=mMode.FrameBufferBase,Previous=mFrontBase;
+  if (mPinned) return Refresh();
+  // Latch the completed back buffer at a frame boundary. The old scanout
+  // becomes writable only after UPDATE_DONE, never while DPU still reads it.
+  MmioWrite32(DPU_REG(0x30),(UINT32)Draw);
+  mFrontBase=Draw;
+  Status=Refresh();
+  if (EFI_ERROR(Status)) return Status;
+  mMode.FrameBufferBase=Previous;
+  Size=mConfigurationSize;
+  Status=FrameBufferBltConfigure((VOID *)(UINTN)Previous,&mNativeInfo,mConfigure,&Size);
+  if (EFI_ERROR(Status)) return Status;
+  // Retain partial redraw semantics in both buffers. Only changed rows are
+  // copied, after the old front buffer is no longer being scanned out.
+  for (Row=Y;Row<Y+H;++Row)
+    CopyMem((VOID *)(UINTN)(Previous+(Row*1920+X)*4),
+      (VOID *)(UINTN)(Draw+(Row*1920+X)*4),W*4);
+  WriteBackDataCacheRange((VOID *)(UINTN)(Previous+(Y*1920+X)*4),((H-1)*1920+W)*4);
+  return EFI_SUCCESS;
 }
 STATIC EFI_STATUS EFIAPI Blt(EFI_GRAPHICS_OUTPUT_PROTOCOL *This, EFI_GRAPHICS_OUTPUT_BLT_PIXEL *Buffer, EFI_GRAPHICS_OUTPUT_BLT_OPERATION Op, UINTN Sx, UINTN Sy, UINTN Dx, UINTN Dy, UINTN W, UINTN H, UINTN Delta) {
   EFI_STATUS Status;
@@ -134,7 +153,7 @@ STATIC EFI_STATUS EFIAPI Blt(EFI_GRAPHICS_OUTPUT_PROTOCOL *This, EFI_GRAPHICS_OU
       UINT32 Hash=2166136261U;
       UINTN I;
       volatile UINT8 *Pixels=(volatile UINT8 *)(UINTN)mMode.FrameBufferBase;
-      for (I=64*mMode.Info->PixelsPerScanLine*(mMode.Mode?4:2);I<mMode.FrameBufferSize;++I) Hash=(Hash^Pixels[I])*16777619U;
+      for (I=64*mMode.Info->PixelsPerScanLine*4;I<mMode.FrameBufferSize;++I) Hash=(Hash^Pixels[I])*16777619U;
       DEBUG((DEBUG_WARN,"W202_STRIPE sec=%lu pixel=%04x ui_hash=%08x ctrl=%x raw=%x\n",Second,Pixels[0],Hash,MmioRead32(DPU_REG(8)),MmioRead32(DPU_REG(0x25c))));
       LastSecond=Second;
     }
@@ -145,14 +164,19 @@ STATIC EFI_STATUS EFIAPI Blt(EFI_GRAPHICS_OUTPUT_PROTOCOL *This, EFI_GRAPHICS_OU
     // Only the destination rectangle was modified. Include inter-row padding
     // in a single bounded cache operation; don't clean 4.6 MB for one icon.
     if (W && H)
-      WriteBackDataCacheRange((VOID *)(UINTN)(mMode.FrameBufferBase+(Dy*mMode.Info->PixelsPerScanLine+Dx)*(mMode.Mode?4:2)),
-                             ((H-1)*mMode.Info->PixelsPerScanLine+W)*(mMode.Mode?4:2));
+      WriteBackDataCacheRange((VOID *)(UINTN)(mMode.FrameBufferBase+(Dy*mMode.Info->PixelsPerScanLine+Dx)*4),
+                             ((H-1)*mMode.Info->PixelsPerScanLine+W)*4);
 #endif
-    Status=Refresh();
+    Status=Present(Dx,Dy,W,H);
   }
   return Status;
 }
 STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL mGop = {Query, Set, Blt, &mMode};
+STATIC UINT32 EFIAPI Rotation(PJ4EDK2_DISPLAY_PROTOCOL *This,UINT32 Mode) {
+  if (!This || This->gop!=&mGop || Mode) return MAX_UINT32;
+  return 0; // AbsolutePointer is already normalized to this landscape GOP.
+}
+STATIC PJ4EDK2_DISPLAY_PROTOCOL mDisplay={PJ4EDK2_DISPLAY_REVISION,sizeof(mDisplay),0,&mGop,Rotation,Handoff};
 STATIC struct {
   VENDOR_DEVICE_PATH Vendor;
   EFI_DEVICE_PATH_PROTOCOL End;
@@ -161,46 +185,42 @@ STATIC struct {
    {0xea8cbfd1,0x714f,0x4794,{0x98,0x52,0xcb,0xb7,0x5c,0x37,0x90,0x10}}},
   {END_DEVICE_PATH_TYPE, END_ENTIRE_DEVICE_PATH_SUBTYPE, {sizeof(EFI_DEVICE_PATH_PROTOCOL),0}}
 };
-EFI_STATUS EFIAPI Initialize(EFI_HANDLE Image, EFI_SYSTEM_TABLE *System) {
-  EFI_HANDLE Handle = NULL;
-  UINTN Size = 0, Mode;
+EFI_STATUS EFIAPI Initialize(EFI_HANDLE Image,EFI_SYSTEM_TABLE *System) {
+  EFI_HANDLE Handle=NULL;
+  EFI_GUID DisplayGuid=PJ4EDK2_DISPLAY_GUID;
+  EFI_PHYSICAL_ADDRESS Address=MAX_UINT32;
   EFI_STATUS Status;
-  LkTraceStage (0x40);
+  UINTN Size=0;
+  UINT32 Layer;
+  LkTraceStage(0x40);
   mDpuCfg=MmioRead32(DPU_REG(0x0c));
-  DEBUG((DEBUG_WARN,"W202_DSI reset=%x mode=%x format=%x phy=%x lanes=%x vactive=%x vblank=%x mmu=%x bypass=%x\n",
-    MmioRead32(0x31300004),MmioRead32(0x31300018),MmioRead32(0x31300020),MmioRead32(0x3130009c),
-    MmioRead32(0x313000a4),MmioRead32(0x31300034),MmioRead32(0x31300030),MmioRead32(DPU_REG(0x1804)),MmioRead32(DPU_REG(0x18a0))));
-  DEBUG((DEBUG_WARN,"W202_GOP version=%08x mode=%08x cfg=%08x ctrl=%08x size=%08x enable=%08x addr=%08x layer=%08x pitch=%u raw=%08x\n",
-    MmioRead32(DPU_REG(0)),MmioRead32(DPU_REG(4)),mDpuCfg,MmioRead32(DPU_REG(8)),
-    MmioRead32(DPU_REG(0x18)),MmioRead32(DPU_REG(0x2c)),MmioRead32(DPU_REG(0x30)),
-    MmioRead32(DPU_REG(0x40)),MmioRead32(DPU_REG(0x4c)),MmioRead32(DPU_REG(0x25c))));
-  if (MmioRead32(DPU_REG(0))!=0x600 ||
-      MmioRead32(DPU_REG(0x18))!=0x078004b0 ||
-      MmioRead32(DPU_REG(0x2c))!=1 ||
-      MmioRead32(DPU_REG(0x30))!=mMode.FrameBufferBase ||
-      (MmioRead32(DPU_REG(0x40)) & 0x007000f0)!=0x00200040 ||
-      MmioRead32(DPU_REG(0x4c))!=1200) return EFI_UNSUPPORTED;
-  mInheritedLayer=MmioRead32(DPU_REG(0x40));mInheritedAlpha=MmioRead32(DPU_REG(0x54));
-  for (Mode=0;Mode<5;++Mode) mInheritedGeometry[Mode]=MmioRead32(DPU_REG(mGeometryRegisters[Mode]));
-  // Streaming scanout cannot safely be repacked in place; keep its old GOP.
-  if (!(mDpuCfg&(BIT0|BIT1)) || mInheritedGeometry[0]!=0x078004b0 ||
-      mInheritedGeometry[1]!=0x078004b0 || mInheritedGeometry[2]!=1200 ||
-      mInheritedGeometry[3] || mInheritedGeometry[4]) mMode.MaxMode=1;
-  for (Mode=0;Mode<mMode.MaxMode;++Mode) {
-    EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info=Mode?&mNativeInfo:&mInfo;
-    Size=0;
-    Status=FrameBufferBltConfigure((VOID *)(UINTN)mMode.FrameBufferBase,Info,NULL,&Size);
-    if (Status!=RETURN_BUFFER_TOO_SMALL) { Status=EFI_UNSUPPORTED;break; }
-    mConfigurations[Mode]=AllocatePool(Size);
-    if (!mConfigurations[Mode]) { Status=EFI_OUT_OF_RESOURCES;break; }
-    Status=FrameBufferBltConfigure((VOID *)(UINTN)mMode.FrameBufferBase,Info,mConfigurations[Mode],&Size);
-    if (EFI_ERROR(Status)) break;
-  }
-  mConfigure=mConfigurations[0];
-  if (!EFI_ERROR(Status)) Status = gBS->InstallMultipleProtocolInterfaces(&Handle, &gEfiGraphicsOutputProtocolGuid, &mGop, &gEfiDevicePathProtocolGuid, &mPath, NULL);
-  if (!EFI_ERROR(Status)) LkTraceStage (0x41);
-  if (EFI_ERROR(Status)) {
-    for (Mode=0;Mode<2;++Mode) if (mConfigurations[Mode]) FreePool(mConfigurations[Mode]);
-  }
+  Layer=MmioRead32(DPU_REG(0x40));
+  if (MmioRead32(DPU_REG(0))!=0x600 || MmioRead32(DPU_REG(0x18))!=0x078004b0 ||
+      MmioRead32(DPU_REG(0x2c))!=1 || MmioRead32(DPU_REG(0x30))!=HANDOFF_BASE ||
+      (Layer&0x007000f0)!=0x00200040 || MmioRead32(DPU_REG(0x4c))!=1200)
+    return EFI_UNSUPPORTED;
+  Status=gBS->AllocatePages(AllocateMaxAddress,EfiBootServicesData,
+    2*EFI_SIZE_TO_PAGES(NATIVE_BYTES),&Address);
+  if (EFI_ERROR(Status)) return Status;
+  mNativeBase=Address;mAlternateBase=Address+EFI_PAGES_TO_SIZE(EFI_SIZE_TO_PAGES(NATIVE_BYTES));
+  SetMem((VOID *)(UINTN)mNativeBase,2*EFI_PAGES_TO_SIZE(EFI_SIZE_TO_PAGES(NATIVE_BYTES)),0);
+  mFrontBase=mNativeBase;mMode.FrameBufferBase=mAlternateBase;
+  Status=FrameBufferBltConfigure((VOID *)(UINTN)mAlternateBase,&mNativeInfo,NULL,&Size);
+  if (Status!=RETURN_BUFFER_TOO_SMALL) return EFI_UNSUPPORTED;
+  mConfigurationSize=Size;mConfigure=AllocatePool(Size);
+  if (!mConfigure) return EFI_OUT_OF_RESOURCES;
+  Status=FrameBufferBltConfigure((VOID *)(UINTN)mAlternateBase,&mNativeInfo,mConfigure,&Size);
+  if (EFI_ERROR(Status)) return Status;
+  Status=Quiesce();if (EFI_ERROR(Status)) return Status;
+  WriteBackDataCacheRange((VOID *)(UINTN)mNativeBase,NATIVE_BYTES);
+  MmioWrite32(DPU_REG(0x44),0x04b00780);MmioWrite32(DPU_REG(0x48),0x04b00780);
+  MmioWrite32(DPU_REG(0x4c),1920);MmioWrite32(DPU_REG(0x50),0);MmioWrite32(DPU_REG(0x60),0);
+  MmioWrite32(DPU_REG(0x54),0xff);
+  MmioWrite32(DPU_REG(0x40),(Layer&~(0x007007f0U|BIT24))|0x00100030|BIT2);
+  MmioWrite32(DPU_REG(0x30),(UINT32)mFrontBase);
+  Status=Refresh();if (EFI_ERROR(Status)) return Status;
+  Status=gBS->InstallMultipleProtocolInterfaces(&Handle,&gEfiGraphicsOutputProtocolGuid,&mGop,
+    &gEfiDevicePathProtocolGuid,&mPath,&DisplayGuid,&mDisplay,NULL);
+  if (!EFI_ERROR(Status)) LkTraceStage(0x41);
   return Status;
 }

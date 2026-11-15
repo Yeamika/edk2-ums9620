@@ -1,82 +1,86 @@
-/* Execute real GOP mode transitions and direct presentation against fake MMIO.
- * This checks software contracts, not panel timing or physical DMA coherency. */
+/* Execute the single native mode, double-buffer presentation and same-layout
+ * child handoff against fake MMIO. This does not simulate physical DMA. */
 #include <Uefi.h>
 #define W202_LK_TRACE_H
 STATIC VOID LkTraceStage(UINT64 Stage) {}
 #include "../Ums9620Pkg/W202ds/drivers/LkGopDxe/LkGopDxe.c"
 #define CHECK(x) do {if (!(x)) return __LINE__;} while (0)
-static UINT32 pixels[1200*1920], ctrl, raw, layer, alpha;
-static UINT16 scratch[1200*1920];
-static UINT32 geometry[5];
-static unsigned blits, cleans;
-static BOOLEAN stalled, allocation_failed;
-VOID *EFIAPI AllocatePool(UINTN Size) {return !allocation_failed && Size==sizeof(scratch)?scratch:NULL;}
-VOID EFIAPI FreePool(VOID *Buffer) {}
-VOID *EFIAPI AllocateCopyPool(UINTN Size,CONST VOID *Buffer) {
-  STATIC EFI_GRAPHICS_OUTPUT_MODE_INFORMATION Copy;
-  if (Size!=sizeof(Copy)) return NULL;
-  Copy=*(CONST EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *)Buffer;return &Copy;
+static UINT32 scanouts[2][1920*1200], pinned[1920*1200];
+static UINT8 configure[64];
+static UINT32 ctrl, raw, layer=0x00200045, geometry[5]={0x078004b0,0x078004b0,1200,0,0};
+static const UINT32 offsets[5]={0x44,0x48,0x4c,0x50,0x60};
+static UINT32 dma=HANDOFF_BASE;
+static unsigned blits,stops,cleans,installs;
+static BOOLEAN stop_stalled, stalled;
+static EFI_STATUS EFIAPI Pages(EFI_ALLOCATE_TYPE T,EFI_MEMORY_TYPE M,UINTN N,EFI_PHYSICAL_ADDRESS *A) {
+ if (T!=AllocateMaxAddress || M!=EfiBootServicesData || N!=2*EFI_SIZE_TO_PAGES(NATIVE_BYTES)) return EFI_INVALID_PARAMETER;
+ *A=(UINTN)scanouts;return EFI_SUCCESS;
 }
+static EFI_STATUS EFIAPI Install(EFI_HANDLE *H,...) {++installs;return EFI_SUCCESS;}
+static EFI_BOOT_SERVICES services={.AllocatePages=Pages,.InstallMultipleProtocolInterfaces=Install};
+EFI_BOOT_SERVICES *gBS=&services;
+VOID *EFIAPI CopyMem(VOID *D,CONST VOID *S,UINTN N) {
+ VOID *R=D;if ((UINTN)D==HANDOFF_BASE) D=pinned;
+ UINT8 *d=D;const UINT8 *s=S;while(N--)*d++=*s++;return R;
+}
+VOID *EFIAPI SetMem(VOID *D,UINTN N,UINT8 V) {UINT8 *d=D;while(N--)*d++=V;return D;}
+VOID *EFIAPI AllocatePool(UINTN N) {return N==sizeof(configure)?configure:NULL;}
+VOID EFIAPI FreePool(VOID *P) {}
+VOID *EFIAPI AllocateCopyPool(UINTN N,CONST VOID *B) {
+ static EFI_GRAPHICS_OUTPUT_MODE_INFORMATION I;if(N!=sizeof(I))return NULL;I=*(CONST EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *)B;return &I;
+}
+RETURN_STATUS EFIAPI FrameBufferBltConfigure(VOID *B,EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *I,FRAME_BUFFER_CONFIGURE *C,UINTN *N) {
+ if (!C) {*N=sizeof(configure);return RETURN_BUFFER_TOO_SMALL;}return RETURN_SUCCESS;
+}
+RETURN_STATUS EFIAPI FrameBufferBlt(FRAME_BUFFER_CONFIGURE *C,EFI_GRAPHICS_OUTPUT_BLT_PIXEL *B,EFI_GRAPHICS_OUTPUT_BLT_OPERATION O,UINTN Sx,UINTN Sy,UINTN Dx,UINTN Dy,UINTN W,UINTN H,UINTN D) {++blits;return RETURN_SUCCESS;}
 BOOLEAN EFIAPI DebugPrintEnabled(VOID) {return FALSE;}
-BOOLEAN EFIAPI DebugPrintLevelEnabled(UINTN Level) {return FALSE;}
-VOID EFIAPI DebugPrint(UINTN Level,CONST CHAR8 *Format,...) {}
+BOOLEAN EFIAPI DebugPrintLevelEnabled(UINTN L) {return FALSE;}
+VOID EFIAPI DebugPrint(UINTN L,CONST CHAR8 *F,...) {}
 VOID EFIAPI MemoryFence(VOID) {}
-VOID *EFIAPI WriteBackDataCacheRange(VOID *Address,UINTN Length) {++cleans;return Address;}
+VOID *EFIAPI WriteBackDataCacheRange(VOID *A,UINTN N) {++cleans;return A;}
 UINTN EFIAPI MicroSecondDelay(UINTN N) {return N;}
 UINT32 EFIAPI MmioRead32(UINTN A) {
-  if (A==DPU_REG(8)) return ctrl;
-  if (A==DPU_REG(0x25c)) return raw;
-  return 0;
+ if(A==DPU_REG(0))return 0x600;
+ if(A==DPU_REG(0x18))return 0x078004b0;
+ if(A==DPU_REG(0x2c))return 1;
+ if(A==DPU_REG(0x30))return dma;
+ if(A==DPU_REG(0x40))return layer;
+ for(UINTN i=0;i<5;i++)if(A==DPU_REG(offsets[i]))return geometry[i];
+ if(A==DPU_REG(8))return ctrl;
+ if(A==DPU_REG(0x25c))return raw;
+ return 0;
 }
 UINT32 EFIAPI MmioWrite32(UINTN A,UINT32 V) {
-  if (A==DPU_REG(0x254)) raw&=~V;
-  if (A==DPU_REG(0x40)) layer=V;
-  if (A==DPU_REG(0x54)) alpha=V;
-  for (UINTN I=0;I<5;++I) if (A==DPU_REG(mGeometryRegisters[I])) geometry[I]=V;
-  if (A==DPU_REG(8)) {ctrl=V;if (!stalled && (V&BIT0)) raw|=BIT0;}
-  return V;
+ if(A==DPU_REG(0x254))raw&=~V;
+ if(A==DPU_REG(0x30))dma=V;
+ if(A==DPU_REG(0x40))layer=V;
+ for(UINTN i=0;i<5;i++)if(A==DPU_REG(offsets[i]))geometry[i]=V;
+ if(A==DPU_REG(8)) {ctrl=V;if(V&BIT1){++stops;if(!stop_stalled)raw|=BIT0;}
+ else if(!stalled&&(V&BIT0))raw|=BIT18;}
+ return V;
 }
-RETURN_STATUS EFIAPI FrameBufferBlt(FRAME_BUFFER_CONFIGURE *Configure,
-  EFI_GRAPHICS_OUTPUT_BLT_PIXEL *Buffer,EFI_GRAPHICS_OUTPUT_BLT_OPERATION Op,
-  UINTN Sx,UINTN Sy,UINTN Dx,UINTN Dy,UINTN W,UINTN H,UINTN Delta) {++blits;return RETURN_SUCCESS;}
+EFI_GUID gEfiGraphicsOutputProtocolGuid={0},gEfiDevicePathProtocolGuid={0};
 int main(void) {
-  UINTN I;
-  volatile UINT16 *Short=(volatile UINT16 *)pixels;
-  EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;UINTN Size;
-  CHECK(Query(&mGop,1,&Size,&Info)==EFI_SUCCESS && Size==sizeof(*Info) &&
-        Info->PixelFormat==PixelBlueGreenRedReserved8BitPerColor);
-  mMode.FrameBufferBase=(UINTN)pixels;mDpuCfg=BIT1;
-  mInheritedLayer=0x00200045;mInheritedAlpha=0x80;
-  mInheritedGeometry[0]=mInheritedGeometry[1]=0x078004b0;mInheritedGeometry[2]=1200;
-  for (I=0;I<1200*1920;++I) Short[I]=(UINT16)I;
-  allocation_failed=TRUE;
-  CHECK(Set(&mGop,1)==EFI_OUT_OF_RESOURCES && mMode.Mode==0);
-  allocation_failed=FALSE;
-  CHECK(Set(&mGop,1)==EFI_SUCCESS && mMode.Mode==1);
-  CHECK(mMode.Info->PixelFormat==PixelBlueGreenRedReserved8BitPerColor);
-  CHECK(mMode.Info->HorizontalResolution==1920 && mMode.Info->VerticalResolution==1200 &&
-        mMode.Info->PixelsPerScanLine==1920);
-  CHECK(mMode.FrameBufferSize==sizeof(pixels) && layer==0x00100035 && alpha==255);
-  CHECK(geometry[0]==0x04b00780 && geometry[1]==0x04b00780 && geometry[2]==1920 && !geometry[3] && !geometry[4]);
-  for (I=0;I<1200*1920;++I) {
-    UINT32 V=(UINT16)I,R=(V>>11)&31,G=(V>>5)&63,B=V&31;
-    UINT32 Expected=(((R<<3)|(R>>2))<<16)|(((G<<2)|(G>>4))<<8)|((B<<3)|(B>>2));
-    CHECK(pixels[(1199-I%1200)*1920+I/1200]==Expected);
-  }
-  CHECK(Blt(&mGop,NULL,EfiBltVideoToVideo,0,0,0,0,1920,1200,0)==EFI_SUCCESS && !blits);
-  CHECK(Blt(&mGop,NULL,EfiBltVideoToVideo,1919,0,1919,0,2,1,0)==EFI_INVALID_PARAMETER);
-  CHECK(Blt(&mGop,NULL,EfiBltVideoToVideo,0,0,1,0,1,1,0)==EFI_SUCCESS && blits==1);
-  CHECK(Set(&mGop,0)==EFI_SUCCESS && mMode.Mode==0 && layer==mInheritedLayer && alpha==0x80);
-  CHECK(mMode.Info==&mInfo && mMode.FrameBufferSize==1200*1920*2);
-  for (I=0;I<5;++I) CHECK(geometry[I]==mInheritedGeometry[I]);
-  for (I=0;I<1200*1920;++I) CHECK(Short[I]==(UINT16)I);
-  CHECK(Set(&mGop,1)==EFI_SUCCESS);
-  pixels[0]=0xff0000;pixels[1919]=0x00ff00;pixels[1199*1920]=0x0000ff;pixels[1200*1920-1]=0xffffff;
-  CHECK(Set(&mGop,0)==EFI_SUCCESS);
-  CHECK(Short[1199]==0xf800 && Short[1200*1920-1]==0x07e0 && Short[0]==0x001f && Short[1919*1200]==0xffff);
-  stalled=TRUE;
-  CHECK(Set(&mGop,1)==EFI_TIMEOUT && mMode.Mode==0);
-  CHECK(Set(&mGop,2)==EFI_UNSUPPORTED && Set(NULL,0)==EFI_INVALID_PARAMETER);
-  CHECK(cleans>=4);
-  return 0;
+ EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *I;UINTN N;
+ CHECK(Query(&mGop,0,&N,&I)==EFI_SUCCESS && I->HorizontalResolution==1920 && I->VerticalResolution==1200);
+ CHECK(Query(&mGop,1,&N,&I)==EFI_UNSUPPORTED && Query(NULL,0,&N,&I)==EFI_INVALID_PARAMETER);
+ CHECK(Initialize(NULL,NULL)==EFI_SUCCESS && installs==1 && stops==1);
+ CHECK(mMode.MaxMode==1 && mMode.Mode==0 && mMode.FrameBufferSize==NATIVE_BYTES);
+ CHECK((layer&0x007000f0)==0x00100030 && geometry[2]==1920);
+ CHECK(mFrontBase==(UINTN)scanouts[0] && mMode.FrameBufferBase==(UINTN)scanouts[1]);
+ UINT32 *draw=(VOID *)(UINTN)mMode.FrameBufferBase;draw[10]=0x123456;
+ CHECK(Blt(&mGop,NULL,EfiBltVideoToVideo,10,0,10,0,1,1,0)==EFI_SUCCESS && !blits);
+ CHECK(mFrontBase==(UINTN)scanouts[1] && mMode.FrameBufferBase==(UINTN)scanouts[0] && scanouts[0][10]==0x123456);
+ CHECK(Blt(&mGop,NULL,EfiBltVideoToVideo,1919,0,1919,0,2,1,0)==EFI_INVALID_PARAMETER);
+ CHECK(Set(&mGop,1)==EFI_UNSUPPORTED && Set(&mGop,0)==EFI_SUCCESS);
+ UINT32 before_layer=layer;stop_stalled=TRUE;
+ CHECK(Handoff(&mDisplay)==EFI_TIMEOUT && !mPinned && layer==before_layer && mMode.FrameBufferBase!=(UINTN)HANDOFF_BASE);
+ stop_stalled=FALSE;
+ CHECK(Handoff(&mDisplay)==EFI_SUCCESS && mPinned && mMode.FrameBufferBase==HANDOFF_BASE && dma==HANDOFF_BASE);
+ CHECK(pinned[10]==0x123456 && layer==before_layer && geometry[2]==1920);
+ unsigned before_stops=stops;
+ CHECK(Handoff(&mDisplay)==EFI_SUCCESS && stops==before_stops);
+ CHECK(Blt(&mGop,NULL,EfiBltVideoToVideo,0,0,0,0,1,1,0)==EFI_SUCCESS && mMode.FrameBufferBase==HANDOFF_BASE);
+ CHECK(cleans>0);
+ return 0;
 }

@@ -121,3 +121,9 @@ python3 -B -m unittest discover -s tests -p test_upstream.py -v
 ```
 
 历史构建、模型测试与设备验证的区别见 [VALIDATION.md](VALIDATION.md)。
+
+## 当前 W202DS 显示与充电实现
+
+W202DS GOP 的显示方向和交接准备由板级协议提供；通用 UI 不直接访问 DPU 寄存器。触控方向与显示布局配套，充电策略包含 USB 重插后的恢复处理；相关模型测试覆盖 GOP 模式和充电控制。跨阶段显示、热插拔和持续充电仍应在实际固件组合上验收。
+
+平台重建必须固定 EDK II 子模块、工具链及板级构建选项；先比较平台清单和 FV，再由 boot 工程验证 LK 包装产物。平台构建不等于生成了独立于 LK 底包的可刷分区。

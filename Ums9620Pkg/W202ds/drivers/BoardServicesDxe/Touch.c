@@ -409,9 +409,9 @@ EFI_STATUS W202TouchRead(EFI_ABSOLUTE_POINTER_STATE *State) {
   if (Irq) ++HighSamples;
   if (Down) ++Presses; else ++Releases;
   if (Presses+Releases<=12) DEBUG((DEBUG_WARN,"HX_EVENT native=%u,%u down=%u irq=%u len=%u\n",X,Y,Down,Irq,Length));
-  /* TouchScope physical calibration: the native axes already match GOP.
-   * Inferring another 180-degree transform from DPU mounting inverted them. */
-  State->CurrentX=X; State->CurrentY=Y; State->CurrentZ=0;
+  /* Board-internal 270-degree clockwise input correction. The public
+   * AbsolutePointer rectangle matches the installed landscape GOP. */
+  State->CurrentX=Y; State->CurrentY=1199-X; State->CurrentZ=0;
   State->ActiveButtons=Down ? EFI_ABSP_TouchActive : 0;
   return EFI_SUCCESS;
 }

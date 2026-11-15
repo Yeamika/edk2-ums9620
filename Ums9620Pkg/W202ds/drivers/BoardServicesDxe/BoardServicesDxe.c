@@ -18,7 +18,7 @@ STATIC PJB_POWER_SAMPLE mPowerSample;
 STATIC UINTN mPollLog, mErrorLog;
 STATIC UINTN mTouchSignals, mTouchCallbacks, mTouchEmpty, mTouchValid;
 STATIC BOOLEAN mWatchdogFailed;
-STATIC EFI_ABSOLUTE_POINTER_MODE mMode={0,0,0,1199,1919,0,0};
+STATIC EFI_ABSOLUTE_POINTER_MODE mMode={0,0,0,1919,1199,0,0};
 STATIC EFI_ABSOLUTE_POINTER_PROTOCOL mPointer;
 
 #ifdef W202_TOUCH_IRQ_DIAG
@@ -291,6 +291,9 @@ EFI_STATUS EFIAPI Initialize(EFI_HANDLE Image, EFI_SYSTEM_TABLE *System) {
   if (!EFI_ERROR(Status)) {
     EFI_STATUS KeyStatus=W202KeysInit();
     DEBUG((DEBUG_WARN,"W202_KEYS init=%r\n",KeyStatus));
+    /* Request charging by default, including when booting without a cable.
+     * PowerPoll retries after cable insertion using the normal safety checks. */
+    SetChargeEnabled(&mCharge,1);
     return Status;
   }
 FailExit:

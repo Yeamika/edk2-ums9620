@@ -112,8 +112,10 @@ STATIC EFI_STATUS AccessCharger(UINTN Index, UINT8 *ChargerStatus, INT32 Command
     UINT8 Enable=0, Input=0, Rate=0, Voltage=0, Timer=0, Dpm=0, Fault=0, FaultNow=0, Got;
     Status=ReadByte(Base,Control,1,&Enable,&Budget);
     if (!EFI_ERROR(Status) && Command) {
-      /* Exact profile observed in stock startup and r36. Never enable from
-       * an unknown/reset profile or clear HIZ/OTG to force power through. */
+      /* Retain the stock charge profile. USB insertion can lower REG00's
+       * IINLIM (100mA steps, e.g. 0x04 = 500mA) without changing the profile.
+       * Accept those lower limits unchanged, never raise them or clear HIZ.
+       * Reject limits above the observed stock 0x14 (2100mA) ceiling. */
       Status=ReadByte(Base,Control,0,&Input,&Budget);
       if (!EFI_ERROR(Status)) Status=ReadByte(Base,Control,2,&Rate,&Budget);
       if (!EFI_ERROR(Status)) Status=ReadByte(Base,Control,4,&Voltage,&Budget);
@@ -122,7 +124,8 @@ STATIC EFI_STATUS AccessCharger(UINTN Index, UINT8 *ChargerStatus, INT32 Command
       /* REG09 is latched: consider both the old and the current fault. */
       if (!EFI_ERROR(Status)) Status=ReadByte(Base,Control,9,&Fault,&Budget);
       if (!EFI_ERROR(Status)) Status=ReadByte(Base,Control,9,&FaultNow,&Budget);
-      if (!EFI_ERROR(Status) && (Index!=0 || Id!=0x14 || Input!=0x14 ||
+      if (!EFI_ERROR(Status) && (Index!=0 || Id!=0x14 ||
+          (Input&0xe0)!=0 || (Input&0x1f)>0x14 ||
           Rate!=0xa3 || Voltage!=0x90 || Timer!=0x87 || Dpm!=0x66 ||
           (Enable&~(BIT4|BIT6))!=0x8a || Fault || FaultNow || ((Raw>>5)&7)==7))
         Status=EFI_ACCESS_DENIED;
